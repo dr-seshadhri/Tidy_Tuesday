@@ -1,0 +1,180 @@
+---
+title: "Taylor Swift Songs"
+author: "Seshadhri S"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r}
+taylor_album_songs <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2023/2023-10-17/taylor_album_songs.csv')
+taylor_all_songs <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2023/2023-10-17/taylor_all_songs.csv')
+taylor_albums <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2023/2023-10-17/taylor_albums.csv')
+
+```
+
+```{r}
+library(tidyverse)     # Data wrangling and ggplot2 visualization
+library(taylor)        # The Taylor Swift dataset package
+library(ggplot2)       # For data visualization (redundant if tidyverse is loaded)
+library(Boruta)        # Feature selection
+library(MASS)          # For robust regression with rlm()
+library(car)           # Companion to Applied Regression, VIF etc.
+library(caret)         # For data preprocessing (e.g., findCorrelation)
+library(ggrepel)
+library(tayloRswift)
+library(corrplot)
+
+```
+
+# Which Album is the most danceable?
+
+```{r}
+album_danceability <- taylor_all_songs %>%
+  group_by(album_name) %>%
+  mutate(mean_danceability = mean(danceability)) %>%
+  dplyr::select(album_name, mean_danceability) %>%
+  distinct() %>%
+  arrange(desc(mean_danceability))
+
+album_release_info <- taylor_albums[, c("album_name", "album_release")]
+
+album_danceability_year <- merge(album_danceability, album_release_info, by = "album_name")
+
+album_danceability_year <- album_danceability_year %>% filter(!is.na(mean_danceability)) %>% arrange(album_release)
+
+
+ggplot(album_danceability_year, aes(album_release, mean_danceability, label = album_name)) +
+  geom_line()+
+  geom_point(size = 4, color = "pink") +
+  geom_text_repel(data = album_danceability_year, size = 2)+
+  scale_color_taylor()+
+  theme_minimal() +
+  ggtitle("Mean Danceability of Taylor Swift Albums") 
+
+```
+
+# Which song is the highest energy and which album has the highest mean energy
+
+```{r}
+high_energy_songs <- taylor_all_songs %>% arrange(desc(energy))
+high_energy_top10 <- high_energy_songs[1:10,]
+
+ggplot(high_energy_top10, aes(x = reorder(track_name, energy), y = energy, fill = energy)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_minimal() +
+  labs(
+    title = "Top 10 Most Energetic Taylor Swift Songs",
+    x = "Track Name",
+    y = "Energy"
+  ) +
+  theme(legend.position = "none")
+
+high_energy_albums <- taylor_all_songs %>% group_by(album_name) %>% summarise(avg_album_energy = mean(energy, na.rm = TRUE)) %>% arrange(desc(avg_album_energy)) 
+high_energy_albums <- high_energy_albums[1:14, ]
+high_energy_albums <- high_energy_albums[-9, ]
+high_energy_albums <- merge(high_energy_albums, album_release_info, by = "album_name" )
+ggplot(high_energy_albums, aes(album_release, y=avg_album_energy, label = album_name)) +
+  geom_line()+
+  geom_point(size = 4, color = "navy") +
+  geom_text_repel(data = high_energy_albums, size = 2)+
+  scale_color_taylor()+
+  theme_minimal() +
+  ggtitle("Average Energy of Taylor Swift Albums") 
+
+```
+
+# Correlation between various attributes among each other
+
+I might run a Boruta to see which features are important in influencing danceability - specifically from characteristics such as loudness, major key, energy, duration, mode etc.
+
+```{r}
+taylor_boruta <- taylor_all_songs %>% dplyr::select(album_name, track_name, c(12:28))
+
+
+# Drop non-numeric/non-feature columns before running Boruta
+boruta_data <- taylor_boruta %>%
+  dplyr::select(-track_name, -album_name) 
+boruta_data <- na.omit(boruta_data)
+
+# Run Boruta
+set.seed(123)  # for reproducibility
+boruta_result <- Boruta(
+  formula = danceability ~ .,
+  data = boruta_data,
+  doTrace = 0,
+  maxRuns = 2000
+)
+?Boruta()
+
+print(boruta_result)
+plot(boruta_result, las = 2, cex.axis = 0.7)
+
+# Get confirmed important features
+impt_attributes <- getSelectedAttributes(boruta_result, withTentative = TRUE)
+print(impt_attributes)
+
+```
+
+# Find out the correlation between the important attributes and danceability
+
+```{r}
+important_vars <- boruta_data %>%
+  dplyr::select(all_of(impt_attributes))  
+cor_matrix <- cor(important_vars, use = "complete.obs")
+cor_matrix <- round(cor_matrix, digits = 2)
+print(cor_matrix)
+corrplot(cor_matrix, method = "color", type = "lower", tl.cex = 0.8, addCoef.col ="black", tl.col = "black", tl.srt = 45)
+```
+
+# Linear Regression
+
+```{r}
+
+lm_model <- lm(danceability ~ ., data = boruta_data)
+print(summary(lm_model))
+plot(lm_model)
+
+```
+
+# Explanation of the four plots (from ChatGPT so be wary)
+
+📈 1. Residuals vs Fitted
+What it shows: Residuals (errors) vs predicted values.
+You're looking for: A random scatter of points around the horizontal line (0).
+
+✅ Good: Cloud of dots, no pattern → model fits well.
+
+❌ Bad: Curves, funnels, or patterns → non-linearity or heteroscedasticity.
+
+TL;DR: If this plot looks like a sad banana, your model isn’t fully linear.
+
+📉 2. Normal Q-Q Plot
+What it shows: Do your residuals follow a normal distribution?
+You're looking for: Points hugging the 45° line.
+
+✅ Good: Almost all dots are on or near the line.
+
+❌ Bad: Points deviate sharply at the ends → skewed errors or outliers.
+
+TL;DR: If it curves like a Taylor Swift bridge, your residuals might be a little dramatic.
+
+🌡️ 3. Scale-Location (aka Spread-Location)
+What it shows: Do residuals have equal variance across fitted values?
+You're looking for: A flat horizontal line with evenly spread points.
+
+✅ Good: Dots are evenly spread.
+
+❌ Bad: Dots fan out or funnel in → your residuals aren’t playing fair (heteroscedasticity).
+
+TL;DR: If it looks like a trumpet, your errors are not consistent.
+
+🔎 4. Residuals vs Leverage
+What it shows: Influential observations that might be messing with your model.
+You're looking for: Points with high leverage and large residuals (check for red Cook’s distance circles).
+
+✅ Good: Most points are in the middle, none flying solo in the corners.
+
+❌ Bad: One point way off in the top-right? That’s your diva outlier.
+
+TL;DR: If it looks like one data point's trying to hijack your tour bus, investigate it.
