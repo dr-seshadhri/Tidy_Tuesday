@@ -1,0 +1,261 @@
+---
+title: "LiChess Game Analysis - TidyTuesday"
+author: "Seshadhri S"
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(tidytuesdayR)
+library(stringr)
+library(tidyr)
+```
+
+# Load the data
+
+```{r}
+# Option 1: Using tidytuesdayR
+# tuesdata <- tidytuesdayR::tt_load('2024-10-01')
+# chess <- tuesdata$chess
+
+# Option 2: Read directly from GitHub
+chess <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2024/2024-10-01/chess.csv')
+
+```
+
+# Categorise Players by Rating
+
+```{r}
+chess_data <- chess %>%
+  mutate(
+    rating_category = case_when(
+      white_rating < 1500 ~ "Beginner",
+      white_rating < 2000 ~ "Intermediate",
+      TRUE ~ "Advanced"
+    )
+  )
+```
+
+# Most Common Openings by Category
+
+```{r}
+
+# List top openings for Beginners
+top_openings_beginner <- chess_data %>%
+  filter(rating_category == "Beginner") %>%
+  group_by(opening_name) %>%
+  tally(sort = TRUE) %>%
+  slice_max(order_by = n, n = 10) %>%
+  ungroup()
+
+# List top openings for Intermediate
+top_openings_intermediate <- chess_data %>%
+  filter(rating_category == "Intermediate") %>%
+  group_by(opening_name) %>%
+  tally(sort = TRUE) %>%
+  slice_max(order_by = n, n = 10) %>%
+  ungroup()
+
+# List top openings for Advanced
+top_openings_advanced <- chess_data %>%
+  filter(rating_category == "Advanced") %>%
+  group_by(opening_name) %>%
+  tally(sort = TRUE) %>%
+  slice_max(order_by = n, n = 10) %>%
+  ungroup()
+
+# View the top openings for each category
+top_openings_beginner
+top_openings_intermediate
+top_openings_advanced
+
+
+```
+
+# Average Game Length by Category
+
+```{r}
+avg_turns <- chess_data %>%
+  group_by(rating_category) %>%
+  summarise(avg_turns = mean(turns))
+
+ggplot(avg_turns, aes(x = rating_category, y = avg_turns, fill = rating_category)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Average Game Length by Player Rating",
+       x = "Player Rating Category",
+       y = "Average Number of Turns") +
+  theme_minimal()
+
+```
+
+# Impact of Castling
+
+```{r}
+castling_analysis <- chess_data %>%
+  mutate(
+    white_castled = str_detect(moves, "O-O|O-O-O"),
+    black_castled = str_detect(moves, "O-O|O-O-O"),
+    both_castled = white_castled & black_castled
+  ) %>%
+  group_by(both_castled, winner) %>%
+  tally()
+
+ggplot(castling_analysis, aes(x = both_castled, y = n, fill = winner)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Impact of Castling on Game Outcomes",
+       x = "Both Players Castled",
+       y = "Number of Games") +
+  theme_minimal()
+
+```
+
+# Game Outcomes by time controls
+
+```{r}
+chess_data <- chess_data %>%
+  separate(time_increment, into = c("base", "increment"), sep = "\\+", convert = TRUE) %>%
+  mutate(
+    total_time = base + 40 * increment,
+    lichess_category = case_when(
+      total_time <= 29 ~ "UltraBullet",
+      total_time <= 179 ~ "Bullet",
+      total_time <= 479 ~ "Blitz",
+      total_time <= 1499 ~ "Rapid",
+      total_time >= 1500 ~ "Classical",
+      TRUE ~ NA_character_
+    )
+  )
+
+time_outcomes <- chess_data %>%
+  group_by(lichess_category, winner) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(lichess_category) %>%
+  mutate(prop = n / sum(n))
+
+ggplot(time_outcomes, aes(x = lichess_category, y = prop, fill = winner)) +
+  geom_col(position = "fill") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    title = "Game Outcomes by Time Control Type",
+    x = "Time Control Category",
+    y = "Proportion of Games",
+    fill = "Game Result"
+  ) +
+  theme_minimal()
+
+
+```
+
+# Game Outcomes Plot
+
+```{r}
+outcomes_by_time <- chess_data %>%
+  group_by(lichess_category, winner) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(lichess_category) %>%
+  mutate(
+    total = sum(n),
+    prop = n / total
+  ) %>%
+  ungroup()
+
+ggplot(outcomes_by_time, aes(x = lichess_category, y = prop, fill = winner)) +
+  geom_col(position = "stack", color = "black") +
+  geom_text(aes(label = scales::percent(prop, accuracy = 1)),
+            position = position_stack(vjust = 0.5),
+            size = 4, color = "white") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    title = "Game Outcomes by Lichess Time Control",
+    x = "Time Control Category",
+    y = "Proportion of Games",
+    fill = "Game Result"
+  ) +
+  theme_minimal()
+
+```
+
+# Game Duration by time controls
+
+```{r}
+ggplot(chess_data, aes(x = lichess_category, y = turns, fill = lichess_category)) +
+  geom_boxplot(outlier.alpha = 0.1) +
+  labs(
+    title = "Game Duration (Turns) by Lichess Time Control",
+    x = "Lichess Time Category",
+    y = "Number of Turns"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "none")
+
+
+```
+
+# Win Rates for Top Openings
+
+```{r}
+opening_winrate <- chess_data %>%
+  filter(winner != "draw") %>%
+  group_by(opening_name) %>%
+  summarise(
+    total_games = n(),
+    white_wins = sum(winner == "white"),
+    black_wins = sum(winner == "black"),
+    win_rate_white = white_wins / total_games,
+    win_rate_black = black_wins / total_games
+  ) %>%
+  arrange(desc(total_games)) %>%
+  slice_head(n = 10)
+
+ggplot(opening_winrate, aes(x = reorder(opening_name, -win_rate_white), y = win_rate_white)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Top Openings by White Win Rate",
+       x = "Opening Name",
+       y = "White Win Rate") +
+  theme_minimal()
+
+ggplot(opening_winrate, aes(x = reorder(opening_name, -win_rate_black), y = win_rate_black)) +
+  geom_col(fill = "black") +
+  coord_flip() +
+  labs(title = "Top Openings by Black Win Rate",
+       x = "Opening Name",
+       y = "Black Win Rate") +
+  theme_minimal()
+
+
+```
+
+# Draw Rate by Rating bin
+
+```{r}
+chess_data <- chess_data %>%
+  mutate(
+    avg_rating = (white_rating + black_rating) / 2,
+    rating_bin = cut(avg_rating, breaks = seq(800, 2800, by = 200))
+  )
+
+draw_rates <- chess_data %>%
+  group_by(rating_bin) %>%
+  summarise(
+    total_games = n(),
+    draws = sum(winner == "draw"),
+    draw_rate = draws / total_games
+  )
+
+ggplot(draw_rates, aes(x = rating_bin, y = draw_rate)) +
+  geom_line(group = 1, color = "purple", size = 1.2) +
+  geom_point(color = "purple", size = 3) +
+  labs(title = "Draw Rate vs. Player Rating",
+       x = "Average Rating Bin",
+       y = "Draw Rate") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(size = 10, angle = 45, hjust = 1)
+  )
+
+```
