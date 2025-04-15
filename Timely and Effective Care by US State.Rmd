@@ -1,0 +1,104 @@
+---
+title: "Timely and Effective Care by US State - TidyTuesday - 8.4.2025"
+author: "Seshadhri S"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+This week we're exploring state-level results for medicare.gov "timely and effective care" measurements. As of 2025-04-06, the data is available at the Centers for Medicare and Medicaid Services (CMS) website. Thanks to former TidyTuesday team member Tracy Teal (@tracykteal) for the dataset suggestion and the link to a visualization by Kayla Zhu and Christina Kostandi at the Visual Capitalist.
+
+Emergency room wait times vary significantly across the United States depending on factors such as hospital resources, patient volume, and staffing levels, with some states facing delays that can stretch for more than three hours.
+
+Is there a connection between state populations and wait times?
+Which conditions have the longest wait times? The shortest?
+Thank you to Jon Harmon, Data Science Learning Community for curating this week's dataset.
+
+# 1. Load the Data
+```{r}
+
+# Using R
+# Option 1: tidytuesdayR R package 
+## install.packages("tidytuesdayR")
+
+tuesdata <- tidytuesdayR::tt_load('2025-04-08')
+## OR
+tuesdata <- tidytuesdayR::tt_load(2025, week = 14)
+
+care_state <- tuesdata$care_state
+
+# Option 2: Read directly from GitHub
+
+care_state <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2025/2025-04-08/care_state.csv')
+```
+# Libraries 
+
+```{r}
+# Data downloaded manually from https://data.cms.gov/provider-data/dataset/apyc-v239
+library(tidyverse)
+library(here)
+library(janitor)
+library(ggplot2)
+```
+
+# Is there a connection between state populations and wait times
+
+```{r}
+us_population <- read.csv("us_pop_by_state.csv", header = TRUE)
+us_population <- us_population[,-1]
+colnames(care_state)[1] <- "state_code"
+us_healthcare <- merge(us_population, care_state, by = "state_code")
+
+measures <- us_healthcare %>%
+  select(measure_id, measure_name) %>%
+  distinct()
+
+us_healthcare_filt <- us_healthcare %>% filter(!is.na(score))
+us_healthcare_state_score <- us_healthcare_filt %>% select(state_code, score) %>%
+  group_by(state_code) %>% summarise(avg_score = mean(score, na.rm = TRUE))
+us_healthcare_state_score_pop <- merge(us_healthcare_state_score, us_population, by = "state_code")
+
+ggplot(us_healthcare_state_score_pop, aes(x = reorder(state, -avg_score), y = avg_score)) +
+  geom_col(fill = "steelblue") +
+  labs(title = "Average Score by State",
+       x = "State",
+       y = "Average Score") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(us_healthcare_state_score_pop, aes(x = X2020_census, y = avg_score, label = state_code)) +
+  geom_point(color = "darkorange", size = 3, alpha = 0.7) +
+  geom_text(vjust = -0.5, size = 1.5) +
+  geom_smooth(method = "lm", se = FALSE, color = "steelblue") +
+  labs(title = "Average Score vs. Population by State",
+       x = "Population",
+       y = "Average Score") +
+  theme_minimal()
+
+cor(us_healthcare_state_score_pop$avg_score, us_healthcare_state_score_pop$X2020_census, use = "complete.obs")
+
+ggplot(us_healthcare_state_score_pop, aes(x = log10(X2020_census), y = avg_score, label = state_code)) +
+  geom_point(color = "darkgreen") +
+  geom_text(vjust = -0.5, size = 2.5) +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  labs(title = "Score vs. Log(Population)",
+       x = "Log10(Population)",
+       y = "Average Score") +
+  theme_minimal()
+
+  
+```
+
+# What Conditions have the longest wait times?
+
+```{r}
+us_healthcare_cond_score <- us_healthcare_filt %>% select(condition, score)
+us_healthcare_cond_score_avg <- us_healthcare_cond_score %>% group_by(condition) %>% summarise(avg_score = (mean(score)), na.rm = TRUE)
+
+ggplot(us_healthcare_cond_score, aes(x = condition, y = score)) +
+  geom_boxplot(width = 0.1, fill = "green", outlier.shape = NA) +
+  labs(title = "Score Distribution by Condition",
+       x = "Condition",
+       y = "Score") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
