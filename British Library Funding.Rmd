@@ -1,0 +1,66 @@
+---
+title: "British_Library_Funding"
+author: "Seshadhri S"
+date: '`r Sys.Date()`'
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r}
+# Using R
+# Option 1: tidytuesdayR R package 
+## install.packages("tidytuesdayR")
+
+tuesdata <- tidytuesdayR::tt_load('2025-07-15')
+## OR
+tuesdata <- tidytuesdayR::tt_load(2025, week = 28)
+
+bl_funding <- tuesdata$bl_funding
+
+# Option 2: Read directly from GitHub
+
+bl_funding <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2025/2025-07-15/bl_funding.csv')
+
+```
+
+What is the most variable source of data?
+What is the most consistent?
+
+```{r}
+var_gia <- var(bl_funding$gia_gbp_millions, na.rm = TRUE)
+print(var_gia)
+var_voluntary <- var(bl_funding$voluntary_gbp_millions, na.rm = TRUE)
+print(var_voluntary)
+var_investment <- var(bl_funding$investment_gbp_millions , na.rm = TRUE)
+print(var_investment)
+var_services <- var(bl_funding$services_gbp_millions , na.rm = TRUE)
+print(var_services)
+var_others <- var(bl_funding$other_gbp_millions , na.rm = TRUE)
+print(var_others)
+
+# Core government funding GIA seems to vary the most based on variance statistics performed on 2000 inflation adjustment stats
+
+# Investment seems to be the most consistent
+```
+
+
+Does that analysis change when adjusted for inflation?
+
+```{r}
+var_gia <- var(bl_funding$gia_y2000_gbp_millions, na.rm = TRUE)
+print(var_gia)
+var_voluntary <- var(bl_funding$voluntary_y2000_gbp_millions, na.rm = TRUE)
+print(var_voluntary)
+var_investment <- var(bl_funding$investment_y2000_gbp_millions, na.rm = TRUE)
+print(var_investment)
+var_services <- var(bl_funding$services_y2000_gbp_millions, na.rm = TRUE)
+print(var_services)
+var_others <- var(bl_funding$other_y2000_gbp_millions, na.rm = TRUE)
+print(var_others)
+
+# Core government funding GIA seems to vary the most based on variance statistics performed on 2000 inflation adjustment stats
+
+# Investment still seems to stay consistent
+```
+
