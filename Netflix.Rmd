@@ -1,0 +1,114 @@
+---
+title: "Netflix_WhatAreWeWatching"
+author: "Seshadhri S"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+This week we are exploring TV show and movie viewing data from Netflix. Since 2023, Netflix has released regular Engagement Reports summarising the number of hours that users have spent watching each show and movie in the last 6 months.
+
+This report, which captures ~99% of all viewing in the first half of 2025, shows that people watched a lot of Netflix — over 95B hours — spanning a wide range of genres and languages. It’s why we continue to invest in a variety of quality titles for various moods and tastes and work hard to make them great.
+
+The dataset this week combines viewing data from late 2023 through the first half of 2025.
+
+What is the relation between time since release and current viewing performance? 
+Do older shows have staying power or do newer releases dominate?
+How does the timing of a show's release (month/season) relate to engagement metrics?
+How does the performance of globally available content compare to regionally restricted titles? 
+Do global releases consistently outperform regional ones?
+How do the top movie performers in each reporting period compare? 
+Are the same kinds of movies consistently popular?
+How does viewing change across seasons for shows that appear in multiple Netflix engagement reports? 
+Do later seasons of popular shows maintain, gain, or lose audience engagement compared to their earlier seasons?
+
+# Load in the data
+
+```{r}
+# Using R
+# Option 1: tidytuesdayR R package 
+## install.packages("tidytuesdayR")
+
+tuesdata <- tidytuesdayR::tt_load('2025-07-29')
+## OR
+tuesdata <- tidytuesdayR::tt_load(2025, week = 30)
+
+movies <- tuesdata$movies
+shows <- tuesdata$shows
+
+# Option 2: Read directly from GitHub
+
+movies <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2025/2025-07-29/movies.csv')
+shows <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2025/2025-07-29/shows.csv')
+```
+
+# Libraries
+
+```{r}
+
+library(tidyverse)
+library(dplyr)
+library(corrr)
+library(lubridate)
+
+```
+
+# What is the relation between time since release and current viewing performance? 
+
+```{r}
+movies_time_view <- movies %>% select(release_date, views)
+shows_time_view <- shows %>% select(release_date, views)
+
+movies_time_view <- movies_time_view %>% mutate(Days = Sys.Date() - release_date) %>% select(views, Days)
+shows_time_view <- shows_time_view %>% mutate(Days = Sys.Date() - release_date) %>% select(views, Days)
+
+movies_time_view <- na.omit(movies_time_view)
+shows_time_view <- na.omit(shows_time_view)
+
+movies_time_view$Days <- as.numeric(movies_time_view$Days)
+cor(movies_time_view$views, movies_time_view$Days, method = "spearman")
+
+shows_time_view$Days <- as.numeric(shows_time_view$Days)
+cor(shows_time_view$views, shows_time_view$Days, method = "spearman")
+
+```
+
+It is not a strong negative correlation but the longer the days since release the views do decrease for both TV shows and movies - maybe less for TV shows because they have more episodes so it takes longer to finish them compared to movies
+
+Do older shows have staying power or do newer releases dominate?
+
+Going to define older shows as those that are released between 2010 to 2020 and anything after as being newer
+
+```{r}
+old_shows <- shows %>% filter(release_date < as.Date("2021-01-01"))
+new_shows <- shows %>% filter(release_date >= as.Date("2021-01-01"))
+
+avg_view_old_shows <- mean(old_shows$views)
+median_view_old_shows <- median(old_shows$views)
+print(avg_view_old_shows)
+print(median_view_old_shows)
+
+avg_view_new_shows <- mean(new_shows$views)
+median_view_new_shows <- median(new_shows$views)
+print(avg_view_new_shows)
+print(median_view_new_shows)
+
+old_shows$Category <- "Old"
+new_shows$Category <- "New"
+
+old_shows <- old_shows %>% mutate(Days = Sys.Date() - release_date)
+new_shows <- new_shows %>% mutate(Days = Sys.Date() - release_date)
+
+shows_total <- rbind(old_shows, new_shows) %>% select(title, views, Category, Days)
+
+ggplot(data = shows_total, aes(x = Days, y = views, color= Category)) +
+  geom_point(label = title, size = 3) + 
+  theme_minimal()
+```
+
+How does the timing of a show's release (month/season) relate to engagement metrics?
+
+```{r}
+
+
+```
+
