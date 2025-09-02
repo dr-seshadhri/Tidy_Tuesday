@@ -1,0 +1,121 @@
+---
+title: "Top_100_Billboard"
+author: "Seshadhri S"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r}
+# Using R
+billboard <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2025/2025-08-26/billboard.csv')
+topics <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2025/2025-08-26/topics.csv')
+
+library(tidyverse)
+library(splines)
+library(dplyr)
+library(lubridate)
+library(hrbrthemes)
+```
+
+Have #1 hits become shorter over time?
+
+```{r}
+time_year <- billboard %>% select(date, length_sec)
+time_year <- time_year %>% mutate(year = year(date))
+avg_time_year <- time_year %>% group_by(year) %>% summarise(mean(length_sec))
+colnames(avg_time_year)[2] <- "avg_length_sec"
+
+plot1 <- ggplot(data = avg_time_year, aes(x=year, y = avg_length_sec)) +
+  geom_line(color = "grey")+
+  geom_point(shape = 21, color = "black", fill = "#69b3a2", size = 2)+
+  theme_ipsum()+
+  ggtitle("Evolution of Song Length for Billboard #1s")
+  
+print(plot1)
+```
+Which keys are most common in #1 hits? Do our key preferences differ by genre?
+
+```{r}
+key_genre <- billboard %>% select(keys, discogs_genre)
+key_genre <- key_genre %>% separate(discogs_genre, into = c("Main_Category", "Rest_Description"), sep = ";", remove = TRUE, extra = "warn")
+
+key_genre_most_common <- key_genre %>% group_by(keys) %>% summarise(count = n()) %>% arrange(desc(count))
+
+print(head(key_genre_most_common))
+
+key_genre_grouped <- key_genre %>% group_by(Main_Category, keys) %>% summarise(count = n(), .groups = "drop")
+
+
+key_genre_grouped %>%
+  pivot_wider(names_from = keys, values_from = count, values_fill = 0)
+
+key_genre %>%
+  group_by(Main_Category, keys) %>%
+  summarise(count = n(), .groups = "drop_last") %>%
+  slice_max(order_by = count, n = 1, with_ties = FALSE) %>%
+  ungroup()
+```
+What lyrical topics have dominated #1 hits across different decades?
+
+```{r}
+billboard_decades_topics <- billboard %>% select(date, lyrical_topic)
+billboard_decades_topics <- billboard_decades_topics %>% mutate(year = year(date))
+
+billboard_decades_topics <- na.omit(billboard_decades_topics)
+
+billboard_decades_topics <- billboard_decades_topics %>%
+  mutate(
+    decade = paste0(floor(year / 10) * 10, "s")
+  )
+
+billboard_decades_topics_grouped <- billboard_decades_topics %>% 
+  group_by(decade, lyrical_topic) %>% summarise(count = n(), .groups = "drop")
+
+billboard_decades_topics_top <- billboard_decades_topics_grouped %>%
+  group_by(decade) %>%
+  slice_max(order_by = count, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+print(billboard_decades_topics_top)
+
+```
+
+How has the prevalence of explicit content changed over time?
+
+```{r}
+billboard_explicit_years <- billboard %>% select(date, explicit)
+billboard_explicit_years <- billboard_explicit_years %>% mutate(year = year(date))
+
+avg_explicit_year <- billboard_explicit_years %>% group_by(year) %>% summarise(count = n(), .groups = "drop")
+
+plot2 <- ggplot(data = avg_explicit_year, aes(x=year, y = count)) +
+  geom_line(color = "grey")+
+  geom_point(shape = 21, color = "black", fill = "#69b3a2", size = 2)+
+  theme_ipsum()+
+  ggtitle("No. of Songs marked Explicit in Billboard #1s over the years")
+
+print(plot2)
+```
+# Does the relation between artist age and chart success change across time?
+
+```{r}
+billboard_age_success <- billboard %>% select(front_person_age, weeks_at_number_one, date)
+billboard_age_success$front_person_age <- round(billboard_age_success$front_person_age,0)
+billboard_age_success <- billboard_age_success %>% mutate(year = year(date))
+
+model2 <- lm(weeks_at_number_one ~ ns(front_person_age, 3) * ns(year, 3), data = billboard_age_success)
+
+billboard_age_success$decade <- floor(billboard_age_success$year / 10) * 10
+
+plot3 <- ggplot(billboard_age_success, aes(x = front_person_age, y = weeks_at_number_one, color = factor(decade))) +
+  geom_point(alpha = 0.4) +
+  geom_smooth(method = "lm", se = FALSE)
+
+print(plot3)
+
+```
+                                                                               
+                                                            
+
+
+
